@@ -339,13 +339,6 @@ HTML_TEMPLATE = """
         input, select { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 10px; border-radius: 8px; width: 100%; }
         .solve-btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
         #result-box { margin-top: 20px; padding: 15px; border-radius: 10px; display: none; text-align: center; font-weight: bold; }
-    #ai-explanation {
-    animation: fadeIn 0.3s ease-in;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
     </style>
 </head>
 <body>
@@ -438,94 +431,37 @@ HTML_TEMPLATE = """
         function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
                 function runCalc() {
-    const payload = { fid: activeF.id, vals: {}, units: {} };
-    activeF.vars.forEach(v => {
-        payload.vals[v.name] = document.getElementById(`v_${v.name}`).value;
-        payload.units[v.name] = document.getElementById(`u_${v.name}`).value;
-    });
+            const payload = { fid: activeF.id, vals: {}, units: {} };
+            activeF.vars.forEach(v => {
+                payload.vals[v.name] = document.getElementById(`v_${v.name}`).value;
+                payload.units[v.name] = document.getElementById(`u_${v.name}`).value;
+            });
 
-    fetch('/api/calculate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-    }).then(r => r.json()).then(data => {
-        const box = document.getElementById('result-box');
-        box.style.display = 'block';
-        if(data.error) {
-            box.style.background = '#fee2e2'; box.style.color = '#dc2626'; 
-            box.innerHTML = `<strong>Error:</strong> ${data.error}`;
-        } else {
-            box.style.background = '#dcfce7'; box.style.color = '#166534';
-            const targetVar = Object.keys(payload.vals).find(k => payload.vals[k] === "");
-            box.innerHTML = `
-                <strong>✅ Result: ${data.res.toFixed(4)} ${data.unit}</strong>
-                ${data.steps ? `
-                    <div style="margin-top:8px; font-size:0.9em; text-align:left; background:var(--bg); padding:12px; border-radius:8px; border-left:4px solid var(--primary);">
-                        ${data.steps.map(s => `<div style="margin-bottom:4px;">${s}</div>`).join('')}
-                    </div>
-                ` : ''}
-                <button id="explain-btn" onclick="getExplanation('${activeF.title}', '${activeF.equation}', '${JSON.stringify(payload.vals).replace(/"/g, '&quot;')}', '${targetVar}', '${data.res.toFixed(4)}', '${data.unit}')" 
-                        style="margin-top:12px; padding:8px 16px; background:#10b981; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.9em;">
-                    🤖 Get AI Explanation
-                </button>
-                <div id="ai-explanation" style="display:none; margin-top:12px; padding:15px; background:#f0f9ff; border-radius:8px; border-left:4px solid #3b82f6;"></div>
-            `;
+            fetch('/api/calculate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(data => {
+                const box = document.getElementById('result-box');
+                box.style.display = 'block';
+                if(data.error) {
+                    box.style.background = '#fee2e2'; box.style.color = '#dc2626'; box.innerText = data.error;
+                } else {
+                    box.style.background = '#dcfce7'; box.style.color = '#166534';
+                                                    if(data.steps) {
+                    let stepsHtml = data.steps.map(s => `<div>${s}</div>`).join('');
+                    box.innerHTML = `
+                        <strong>Result: ${data.res.toFixed(4)} ${data.unit}</strong>
+                        <div style="margin-top:8px; font-size:0.9em; text-align:left;">
+                            ${stepsHtml}
+                        </div>
+                    `;
+                } else {
+                    box.innerHTML = `Result: ${data.res.toFixed(4)} ${data.unit}`;
+                }
+                }
+            });
         }
-    });
-}
-
-let explanationLoading = false;
-function getExplanation(title, equation, vals, target, result, unit) {
-    if (explanationLoading) return;
-    
-    const btn = document.getElementById('explain-btn');
-    const aiBox = document.getElementById('ai-explanation');
-    
-    explanationLoading = true;
-    btn.innerHTML = '🤖 AI is thinking...';
-    btn.disabled = true;
-    aiBox.style.display = 'block';
-    aiBox.innerHTML = '<div style="text-align:center; color:#6b7280;">Generating explanation...</div>';
-    
-    const known = Object.entries(JSON.parse(vals.replace(/&quot;/g, '"'))).filter(([k,v]) => v !== "").map(([k,v]) => `${k}=${v}`).join(', ');
-    
-    fetch('/api/explain', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            problem: title,
-            formula: equation,
-            known: known,
-            target: target,
-            result: result,
-            unit: unit
-        })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.error) {
-            aiBox.innerHTML = `<span style="color:#dc2626;">❌ ${data.error}</span>`;
-        } else {
-            aiBox.innerHTML = `<strong>🎓 AI Explanation:</strong><br>${data.explanation}`;
-        }
-        btn.innerHTML = '✅ Explanation Loaded';
-        btn.disabled = false;
-        explanationLoading = false;
-    })
-    .catch(() => {
-        aiBox.innerHTML = '<span style="color:#dc2626;">❌ Network error. Try again.</span>';
-        btn.innerHTML = '🤖 Get AI Explanation';
-        btn.disabled = false;
-        explanationLoading = false;
-    });
-}
-#ai-explanation {
-    animation: fadeIn 0.3s ease-in;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
     </script>
 </body>
 </html>
@@ -923,30 +859,14 @@ def calculate():
             'steps': steps
         })
 
-
+        return jsonify({
+            'res': final_res,
+            'unit': units[target],
+            'steps': steps
+        })
     except Exception:
         return jsonify({'error': 'Check inputs for zero or negative values.'})
 
-
-@app.route('/api/explain', methods=['POST'])
-def explain_solution():
-    data = request.json
-    try:
-        prompt = f"""..."""  # your prompt
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200
-        )
-        return jsonify({'explanation': response.choices[0].message.content})
-
-    except openai.APIError as e:
-        return jsonify({'error': 'OpenAI API error. Try again.'}), 500
-    except openai.AuthenticationError:
-        return jsonify({'error': 'Invalid API key.'}), 500
-    except Exception:
-        return jsonify({'error': 'AI service unavailable.'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
