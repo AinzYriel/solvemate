@@ -1,8 +1,11 @@
 from flask import Flask, render_template_string, request, jsonify
 import math
 import json
+import openai
 
 app = Flask(__name__)
+
+openai.api_key = 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
 
 # --- STRUCTURED PHYSICS LIBRARY ---
 physics_library = {
@@ -946,21 +949,22 @@ def calculate():
 def explain_solution():
     data = request.json
     try:
-        prompt = f"""..."""  # your prompt
-
-        response = client.chat.completions.create(
+        prompt = f"""
+        Explain this physics problem step-by-step for a student:
+        Formula: {data.get('formula', '')}
+        Problem: {data.get('problem', '')}
+        Result: {data.get('result', '')}
+        Keep it simple, educational, maximum 150 words.
+        """
+        
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200
         )
         return jsonify({'explanation': response.choices[0].message.content})
-
-    except openai.APIError as e:
-        return jsonify({'error': 'OpenAI API error. Try again.'}), 500
-    except openai.AuthenticationError:
-        return jsonify({'error': 'Invalid API key.'}), 500
-    except Exception:
-        return jsonify({'error': 'AI service unavailable.'}), 500
+    except Exception as e:
+        return jsonify({'error': f'AI error: {str(e)}'})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
