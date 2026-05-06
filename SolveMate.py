@@ -387,147 +387,160 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-        let activeF = null;
+let activeF = null;
+let explanationLoading = false;
 
-        function toggleTheme() {
-            const current = document.documentElement.getAttribute('data-theme');
-            const target = current === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', target);
-            localStorage.setItem('theme', target);
-        }
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme');
+    const target = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', target);
+    localStorage.setItem('theme', target);
+}
 
-        if(localStorage.getItem('theme')) {
-            document.documentElement.setAttribute('data-theme', localStorage.getItem('theme'));
-        }
+if(localStorage.getItem('theme')) {
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('theme'));
+}
 
-        function searchLib() {
-            const query = document.getElementById('search').value.toLowerCase();
-            document.querySelectorAll('.card').forEach(card => {
-                card.style.display = card.dataset.search.toLowerCase().includes(query) ? 'block' : 'none';
-            });
-        }
+function searchLib() {
+    const query = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('.card').forEach(card => {
+        card.style.display = card.dataset.search.toLowerCase().includes(query) ? 'block' : 'none';
+    });
+}
 
-        function openSolver(id) {
-            fetch(`/api/formula/${id}`).then(r => r.json()).then(f => {
-                activeF = f;
-                document.getElementById('m-title').innerText = f.title;
-                document.getElementById('m-inputs').innerHTML = f.vars.map(v => `
-                    <div class="input-row">
-                        <div>
-                            <label style="font-size:0.75rem;">${v.label} (${v.symbol})</label>
-                            <input type="number" id="v_${v.name}" data-label="${v.label}" step="any">
-                        </div>
-                        <div>
-                            <label style="font-size:0.75rem;">Unit</label>
-                            <select id="u_${v.name}">${v.units.map(u => `<option value="${u}">${u}</option>`).join('')}</select>
-                        </div>
-                    </div>
-                `).join('');
-                document.getElementById('modal').style.display = 'flex';
-                document.getElementById('result-box').style.display = 'none';
-                updateBtn();
-            });
-        }
+function openSolver(id) {
+    fetch(`/api/formula/${id}`)
+    .then(response => response.json())
+    .then(formula => {
+        activeF = formula;
+        document.getElementById('m-title').textContent = formula.title;
+        document.getElementById('m-inputs').innerHTML = formula.vars.map(v => `
+            <div class="input-row">
+                <div>
+                    <label>${v.label} (${v.symbol})</label>
+                    <input type="number" id="v_${v.name}" data-label="${v.label}" step="any" oninput="updateBtn()">
+                </div>
+                <div>
+                    <label>Unit</label>
+                    <select id="u_${v.name}" onchange="updateBtn()">
+                        ${v.units.map(u => `<option value="${u}">${u}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+        `).join('');
+        document.getElementById('modal').style.display = 'flex';
+        document.getElementById('result-box').style.display = 'none';
+        updateBtn();
+    })
+    .catch(error => console.error('Formula fetch failed:', error));
+}
 
-        function updateBtn() {
-            const empty = Array.from(document.querySelectorAll('#m-inputs input')).filter(i => i.value === "");
-            const btn = document.getElementById('m-calc');
-            btn.innerText = empty.length === 1 ? `Solve for ${empty[0].dataset.label}` : "Fill Values";
-            btn.disabled = empty.length !== 1;
-        }
+function updateBtn() {
+    if (!activeF) return;
+    const emptyInputs = Array.from(document.querySelectorAll('#m-inputs input')).filter(input => input.value === '');
+    const calcBtn = document.getElementById('m-calc');
+    if (emptyInputs.length === 1) {
+        calcBtn.textContent = `Solve for ${emptyInputs[0].dataset.label}`;
+        calcBtn.disabled = false;
+    } else {
+        calcBtn.textContent = 'Leave exactly one blank';
+        calcBtn.disabled = true;
+    }
+}
 
-        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+function closeModal() {
+    document.getElementById('modal').style.display = 'none';
+}
 
-                function runCalc() {
-    const payload = { fid: activeF.id, vals: {}, units: {} };
-    activeF.vars.forEach(v => {
-        payload.vals[v.name] = document.getElementById(`v_${v.name}`).value;
-        payload.units[v.name] = document.getElementById(`u_${v.name}`).value;
+function runCalc() {
+    const payload = {
+        fid: activeF.id,
+        vals: {},
+        units: {}
+    };
+    
+    activeF.vars.forEach(varInfo => {
+        payload.vals[varInfo.name] = document.getElementById(`v_${varInfo.name}`).value || '';
+        payload.units[varInfo.name] = document.getElementById(`u_${varInfo.name}`).value;
     });
 
     fetch('/api/calculate', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-    }).then(r => r.json()).then(data => {
-        const box = document.getElementById('result-box');
-        box.style.display = 'block';
-        if(data.error) {
-            box.style.background = '#fee2e2'; box.style.color = '#dc2626'; 
-            box.innerHTML = `<strong>Error:</strong> ${data.error}`;
+    })
+    .then(response => response.json())
+    .then(data => {
+        const resultBox = document.getElementById('result-box');
+        resultBox.style.display = 'block';
+        
+        if (data.error) {
+            resultBox.style.backgroundColor = '#fee2e2';
+            resultBox.style.color = '#dc2626';
+            resultBox.innerHTML = `<strong>Error:</strong> ${data.error}`;
         } else {
-            box.style.background = '#dcfce7'; box.style.color = '#166534';
-            const targetVar = Object.keys(payload.vals).find(k => payload.vals[k] === "");
-            box.innerHTML = `
-                <strong>✅ Result: ${data.res.toFixed(4)} ${data.unit}</strong>
-                ${data.steps ? `
-                    <div style="margin-top:8px; font-size:0.9em; text-align:left; background:var(--bg); padding:12px; border-radius:8px; border-left:4px solid var(--primary);">
-                        ${data.steps.map(s => `<div style="margin-bottom:4px;">${s}</div>`).join('')}
-                    </div>
-                ` : ''}
-                <button id="explain-btn" onclick="getExplanation('${activeF.title}', '${activeF.equation}', '${JSON.stringify(payload.vals).replace(/"/g, '&quot;')}', '${targetVar}', '${data.res.toFixed(4)}', '${data.unit}')" 
-                        style="margin-top:12px; padding:8px 16px; background:#10b981; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.9em;">
-                    🤖 Get AI Explanation
-                </button>
-                <div id="ai-explanation" style="display:none; margin-top:12px; padding:15px; background:#f0f9ff; border-radius:8px; border-left:4px solid #3b82f6;"></div>
+            resultBox.style.backgroundColor = '#dcfce7';
+            resultBox.style.color = '#166534';
+            const targetVar = Object.keys(payload.vals).find(key => payload.vals[key] === '');
+            resultBox.innerHTML = `
+                <strong>Result: ${parseFloat(data.res).toFixed(4)} ${data.unit}</strong>
+                ${data.steps ? `<div style="margin-top: 10px; padding: 10px; background: var(--bg); border-radius: 8px;">${data.steps.map(step => `<div>${step}</div>`).join('')}</div>` : ''}
+                <button id="ai-btn" style="margin-top: 10px; padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer;" onclick="getAIExplanation()">🤖 AI Explanation</button>
+                <div id="ai-result" style="display: none; margin-top: 10px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #3b82f6;"></div>
             `;
         }
+    })
+    .catch(error => {
+        console.error('Calculate error:', error);
+        document.getElementById('result-box').innerHTML = '<strong>Network error</strong>';
     });
 }
 
-let explanationLoading = false;
-function getExplanation(title, equation, vals, target, result, unit) {
+function getAIExplanation() {
     if (explanationLoading) return;
     
-    const btn = document.getElementById('explain-btn');
-    const aiBox = document.getElementById('ai-explanation');
-    
     explanationLoading = true;
-    btn.innerHTML = '🤖 AI is thinking...';
-    btn.disabled = true;
-    aiBox.style.display = 'block';
-    aiBox.innerHTML = '<div style="text-align:center; color:#6b7280;">Generating explanation...</div>';
+    const aiBtn = document.getElementById('ai-btn');
+    const aiResult = document.getElementById('ai-result');
     
-    const known = Object.entries(JSON.parse(vals.replace(/&quot;/g, '"'))).filter(([k,v]) => v !== "").map(([k,v]) => `${k}=${v}`).join(', ');
+    aiBtn.textContent = '🤖 Loading...';
+    aiBtn.disabled = true;
+    aiResult.style.display = 'block';
+    aiResult.innerHTML = 'Generating explanation...';
+    
+    const targetVar = Object.keys(activeF.vars.find(v => document.getElementById(`v_${v.name}`).value === '') || {}).find(k => true);
     
     fetch('/api/explain', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            problem: title,
-            formula: equation,
-            known: known,
-            target: target,
-            result: result,
-            unit: unit
+            problem: activeF.title,
+            formula: activeF.equation,
+            known: JSON.stringify({}),
+            target: targetVar || 'unknown',
+            result: 'calculated',
+            unit: 'unit'
         })
     })
-    .then(r => r.json())
+    .then(response => response.json())
     .then(data => {
         if (data.error) {
-            aiBox.innerHTML = `<span style="color:#dc2626;">❌ ${data.error}</span>`;
+            aiResult.innerHTML = `<strong>Error:</strong> ${data.error}`;
         } else {
-            aiBox.innerHTML = `<strong>🎓 AI Explanation:</strong><br>${data.explanation}`;
+            aiResult.innerHTML = `<strong>AI Explanation:</strong><br>${data.explanation}`;
         }
-        btn.innerHTML = '✅ Explanation Loaded';
-        btn.disabled = false;
+        aiBtn.textContent = '✅ Loaded';
+        aiBtn.disabled = false;
         explanationLoading = false;
     })
     .catch(() => {
-        aiBox.innerHTML = '<span style="color:#dc2626;">❌ Network error. Try again.</span>';
-        btn.innerHTML = '🤖 Get AI Explanation';
-        btn.disabled = false;
+        aiResult.innerHTML = 'AI service unavailable';
+        aiBtn.textContent = '🤖 Try Again';
+        aiBtn.disabled = false;
         explanationLoading = false;
     });
 }
-#ai-explanation {
-    animation: fadeIn 0.3s ease-in;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-    </script>
+</script>
 </body>
 </html>
 """
